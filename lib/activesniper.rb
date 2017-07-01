@@ -2,13 +2,26 @@ require "activesniper/version"
 require "active_record"
 
 module ActiveSniper
-  def before_save_snipe(*args, &block)
-    if extractable_options?(args)
-      options_merge!(args.last, build_proc(extract_columns(args.last)))
-      args.last.delete("only")
-      args.last.delete("except")
+  NON_STATE_CALLBACKS = [
+      :before_validation, :after_validation,
+      :after_rollback,
+      :before_save, :after_save, :around_save,
+      :before_update, :after_update, :around_update
+  ]
+  # TODO: Support :after_commit
+  SAVE_BEFORE_STATE_CALLBACKS = [:after_commit]
+  EXCEPT_COLUMNS = [:id, :created_at, :updated_at]
+
+  NON_STATE_CALLBACKS.each do |base_callback|
+    callback = (base_callback.to_s + '_snipe').to_sym
+    define_method callback do |*args, &block|
+      if extractable_options?(args)
+        options_merge!(args.last, build_proc(extract_columns(args.last)))
+        args.last.delete("only")
+        args.last.delete("except")
+      end
+      send(base_callback, *args, &block)
     end
-    before_save *args, &block
   end
 
   private
@@ -17,7 +30,7 @@ module ActiveSniper
       if hash.has_key?(:only)
         [hash[:only]].flatten.map(&:to_s)
       elsif hash.has_key?(:except)
-        columns.map { |column| column.name } - [hash[:except]].flatten.map(&:to_s)
+        columns.map { |column| column.name } - [hash[:except] + EXCEPT_COLUMNS].flatten.map(&:to_s)
       end
     end
 
