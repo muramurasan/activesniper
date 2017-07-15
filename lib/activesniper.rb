@@ -4,12 +4,11 @@ require "active_record"
 module ActiveSniper
   NON_STATE_CALLBACKS = [
       :before_validation, :after_validation,
-      :after_rollback,
       :before_save, :after_save, :around_save,
       :before_update, :after_update, :around_update
   ]
-  # TODO: Support :after_commit
-  SAVE_BEFORE_STATE_CALLBACKS = [:after_commit]
+  # TODO: Support :after_commit, :after_rollback
+  SAVE_BEFORE_STATE_CALLBACKS = [:after_commit, :after_rollback]
   EXCEPT_COLUMNS = [:id, :created_at, :updated_at]
 
   NON_STATE_CALLBACKS.each do |base_callback|
@@ -20,6 +19,20 @@ module ActiveSniper
         args.last.delete("only")
         args.last.delete("except")
       end
+      send(base_callback, *args, &block)
+    end
+  end
+
+  SAVE_BEFORE_STATE_CALLBACKS.each do |base_callback|
+    callback = (base_callback.to_s + '_snipe').to_sym
+    define_method callback do |*args, &block|
+      if extractable_options?(args)
+        options_merge!(args.last, build_proc(extract_columns(args.last)))
+        args.last.delete("only")
+        args.last.delete("except")
+      end
+      # TODO: Retain changed columns in before_save.
+      # TODO: Judge by before state.
       send(base_callback, *args, &block)
     end
   end
